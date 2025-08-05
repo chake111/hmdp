@@ -1,7 +1,12 @@
 package com.hmdp.utils;
 
 import com.hmdp.dto.UserDTO;
+import com.hmdp.entity.User;
 
+/**
+ * @author chake
+ * @since 2025/08/11
+ */
 public class UserHolder {
     private static final ThreadLocal<UserDTO> tl = new ThreadLocal<>();
 
