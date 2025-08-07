@@ -85,6 +85,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
                 CopyOptions.create().setIgnoreNullValue(true).setFieldValueEditor((field, value) -> value.toString()));
         redisTemplate.opsForHash().putAll(LOGIN_USER_KEY + token, userMap);
         redisTemplate.expire(LOGIN_USER_KEY + token, LOGIN_USER_TTL, TimeUnit.SECONDS);
+        log.info("登录成功，用户：{}, token：{}", user, token);
         return Result.ok(token);
     }
 
