@@ -56,8 +56,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         Long result = redisTemplate.execute(
                 SECKILL_SCRIPT,
                 Collections.emptyList(),
-                voucherId,
-                userId
+                String.valueOf(voucherId),
+                String.valueOf(userId)
         );
         int r = Math.toIntExact(result);
         // 2. 判断结果为零
