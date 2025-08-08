@@ -11,7 +11,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import javax.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import java.util.List;
 
 import static com.hmdp.utils.RedisConstants.SECKILL_STOCK_KEY;
@@ -25,13 +25,11 @@ import static com.hmdp.utils.RedisConstants.SECKILL_STOCK_KEY;
  * @since 2021-12-22
  */
 @Service
+@RequiredArgsConstructor
 public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> implements IVoucherService {
 
-    @Resource
-    private ISeckillVoucherService seckillVoucherService;
-
-    @Resource
-    private StringRedisTemplate redisTemplate;
+    private final ISeckillVoucherService seckillVoucherService;
+    private final StringRedisTemplate stringRedisTemplate;
 
     @Override
     public Result queryVoucherOfShop(Long shopId) {
@@ -54,6 +52,6 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
         seckillVoucher.setEndTime(voucher.getEndTime());
         seckillVoucherService.save(seckillVoucher);
         // 保存秒杀库存到redis中
-        redisTemplate.opsForValue().set(SECKILL_STOCK_KEY + voucher.getId(), String.valueOf(voucher.getStock()));
+        stringRedisTemplate.opsForValue().set(SECKILL_STOCK_KEY + voucher.getId(), String.valueOf(voucher.getStock()));
     }
 }
