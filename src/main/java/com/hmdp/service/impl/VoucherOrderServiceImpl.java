@@ -3,24 +3,21 @@ package com.hmdp.service.impl;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.dto.Result;
 import com.hmdp.entity.SeckillVoucher;
-import com.hmdp.entity.Voucher;
 import com.hmdp.entity.VoucherOrder;
 import com.hmdp.mapper.VoucherOrderMapper;
 import com.hmdp.service.ISeckillVoucherService;
 import com.hmdp.service.IVoucherOrderService;
-import com.hmdp.service.IVoucherService;
 import com.hmdp.utils.RedisIdWorker;
-import com.hmdp.utils.SimpleRedisLock;
 import com.hmdp.utils.UserHolder;
 import lombok.RequiredArgsConstructor;
-import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
-import org.springframework.aop.framework.AopContext;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+import java.util.Collections;
 
 /**
  * <p>
@@ -42,38 +39,71 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
     private final RedissonClient redissonClient;
 
+    private static final DefaultRedisScript<Long> SECKILL_SCRIPT;
+
+    static {
+        SECKILL_SCRIPT = new DefaultRedisScript<>();
+        SECKILL_SCRIPT.setLocation(new ClassPathResource("seckill.lua"));
+        SECKILL_SCRIPT.setResultType(Long.class);
+
+    }
+
     @Override
     @Transactional
     public Result seckillVoucher(Long voucherId) {
         Long userId = UserHolder.getUser().getId();
-        // 1. 查询优惠券信息
-        SeckillVoucher voucher = seckillVoucherService.getById(voucherId);
-        if (voucher == null) {
-            return Result.fail("优惠券不存在");
+        // 1. 执行lua脚本
+        Long result = redisTemplate.execute(
+                SECKILL_SCRIPT,
+                Collections.emptyList(),
+                voucherId,
+                userId
+        );
+        int r = Math.toIntExact(result);
+        // 2. 判断结果为零
+        if (r != 0) {
+            // 2.1 不为零，代表没有购买资格
+            return Result.fail(r == 1 ? "库存不足" : "不能重复下单");
         }
-        // 2. 判断是否开始
-        if (voucher.getBeginTime().isAfter(LocalDateTime.now())
-                || voucher.getEndTime().isBefore(LocalDateTime.now())) {
-            // 3. 未开始，返回异常
-            return Result.fail("秒杀未开始或已结束");
-        }
-        // 4. 已开始，判断库存是否充足
-        if (voucher.getStock() < 1) {
-            // 5. 库存不足，返回异常
-            return Result.fail("库存不足");
-        }
-        RLock lock = redissonClient.getLock("lock:order:" + userId);
-        if (!lock.tryLock()) {
-            //锁定失败，返回异常
-            return Result.fail("不允许重复下单");
-        }
-        try {
-            IVoucherOrderService proxy = (IVoucherOrderService) AopContext.currentProxy();
-            return proxy.createVoucherOrder(voucherId);
-        } finally {
-            lock.unlock();
-        }
+        // 2.2 为零， 有购买资格，把下单信息保存到阻塞队列
+        // TODO 保存到阻塞队列
+
+        // 3.返回订单id
+        long orderId = redisIdWorker.nextId("order");
+        return Result.ok(orderId);
     }
+//    @Override
+//    @Transactional
+//    public Result seckillVoucher(Long voucherId) {
+//        Long userId = UserHolder.getUser().getId();
+//        // 1. 查询优惠券信息
+//        SeckillVoucher voucher = seckillVoucherService.getById(voucherId);
+//        if (voucher == null) {
+//            return Result.fail("优惠券不存在");
+//        }
+//        // 2. 判断是否开始
+//        if (voucher.getBeginTime().isAfter(LocalDateTime.now())
+//                || voucher.getEndTime().isBefore(LocalDateTime.now())) {
+//            // 3. 未开始，返回异常
+//            return Result.fail("秒杀未开始或已结束");
+//        }
+//        // 4. 已开始，判断库存是否充足
+//        if (voucher.getStock() < 1) {
+//            // 5. 库存不足，返回异常
+//            return Result.fail("库存不足");
+//        }
+//        RLock lock = redissonClient.getLock("lock:order:" + userId);
+//        if (!lock.tryLock()) {
+//            //锁定失败，返回异常
+//            return Result.fail("不允许重复下单");
+//        }
+//        try {
+//            IVoucherOrderService proxy = (IVoucherOrderService) AopContext.currentProxy();
+//            return proxy.createVoucherOrder(voucherId);
+//        } finally {
+//            lock.unlock();
+//        }
+//    }
 
     @Override
     @Transactional
