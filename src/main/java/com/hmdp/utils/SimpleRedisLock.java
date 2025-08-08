@@ -1,8 +1,11 @@
 package com.hmdp.utils;
 
+import org.springframework.core.io.ClassPathResource;
 import cn.hutool.core.lang.UUID;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 
+import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -11,13 +14,21 @@ import java.util.concurrent.TimeUnit;
  */
 public class SimpleRedisLock implements ILock {
 
-    private String name;
-    private final String KEY_PREFIX = "lock:";
-    private final String ID_PREFIX = UUID.randomUUID().toString(true) + "-";
     private final StringRedisTemplate redisTemplate;
+    private String name;
+    private static final String KEY_PREFIX = "lock:";
+    private static final String ID_PREFIX = UUID.randomUUID().toString(true) + "-";
+    private static final DefaultRedisScript<Long> UNLOCK_SCRIPT;
 
-    public SimpleRedisLock(String s, StringRedisTemplate redisTemplate) {
-        this.name = s;
+    static {
+        UNLOCK_SCRIPT = new DefaultRedisScript<>();
+        UNLOCK_SCRIPT.setLocation(new ClassPathResource("unlock.lua"));
+        UNLOCK_SCRIPT.setResultType(Long.class);
+
+    }
+
+    public SimpleRedisLock(String name, StringRedisTemplate redisTemplate) {
+        this.name = name;
         this.redisTemplate = redisTemplate;
     }
 
@@ -33,14 +44,10 @@ public class SimpleRedisLock implements ILock {
 
     @Override
     public void unlock() {
-        // 获取线程标识
-        String threadId = ID_PREFIX + Thread.currentThread().getId();
-        // 获取锁的标识
-        String lockId = redisTemplate.opsForValue().get(KEY_PREFIX + name);
-        //判断是否一致
-        if (threadId.equals(lockId)) {
-            // 释放锁
-            redisTemplate.delete(KEY_PREFIX + name);
-        }
+        // 调用lua脚本
+        redisTemplate.execute(
+                UNLOCK_SCRIPT,
+                Collections.singletonList(KEY_PREFIX + name),
+                Collections.singletonList(ID_PREFIX + Thread.currentThread().getId()));
     }
 }
