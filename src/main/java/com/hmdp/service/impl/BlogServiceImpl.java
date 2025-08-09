@@ -1,6 +1,8 @@
 package com.hmdp.service.impl;
 
+import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.BooleanUtil;
+import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.dto.Result;
@@ -16,7 +18,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static com.hmdp.utils.RedisConstants.BLOG_LIKED_KEY;
 
@@ -108,7 +113,37 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         return Result.ok();
     }
 
+    @Override
+    public Result queryBlogLikes(Long id) {
+        // 1. 查询top 5点赞用户 zRange key start
+        String key = BLOG_LIKED_KEY + id;
+        Set<String> top5 = redisTemplate.opsForZSet().range(key, 0, 4);
+        if (top5 == null || top5.isEmpty()) {
+            return Result.ok(Collections.emptyList());
+        }
+        // 2. 解析出其中的用户信息
+        List<Long> ids = top5.stream()
+                .map(Long::valueOf)
+                .toList();
+        String idStr = StrUtil.join(",", ids);
+        // 3. 根据用户id查询用户信息
+        List<UserDTO> userDTOList = userService.lambdaQuery()
+                .in(User::getId, ids)
+                .last("ORDER BY FIELD(id, " + idStr + ")")
+                .list()
+                .stream()
+                .map(user -> BeanUtil.copyProperties(user, UserDTO.class))
+                .toList();
+        // 4. 返回
+        return Result.ok(userDTOList);
+    }
+
     private void queryBlogUser(Blog blog) {
+        UserDTO userDTO = UserHolder.getUser();
+        if (userDTO == null) {
+            // 用户未登录，不查询用户信息
+            return;
+        }
         Long userId = blog.getUserId();
         User user = userService.getById(userId);
         blog.setName(user.getNickName());
