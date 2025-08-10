@@ -4,6 +4,9 @@ import lombok.Data;
 
 import java.util.List;
 
+/**
+ * @author chake
+ */
 @Data
 public class ScrollResult {
     private List<?> list;
